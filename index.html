@@ -410,7 +410,7 @@ const setVal = (id, val) => { const el = $(id); if(el) el.value = val; };
 function goStep(step) {
   if (step < 1 || step > 5) return;
   if (step === 2 && !userAddress) { alert('ابتدا کیف پول را وصل کنید'); return; }
-  if (step === 4 && !compiledOutput) { alert('ابتدا قرارداد را کامپایل کنید'); return; }
+  // مرحله ۴ (کامپایل) همیشه قابل دسترسی باشد
   if (step === 5 && !compiledOutput) { alert('ابتدا قرارداد را کامپایل کنید'); return; }
 
   for (let i = 1; i <= 5; i++) {
