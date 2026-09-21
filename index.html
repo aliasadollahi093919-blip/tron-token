@@ -605,15 +605,7 @@ async function compileContract() {
   }
 }
 
-function initSolcWrapper() {
-  return new Promise((resolve) => {
-    if (window.solcWrapper) return resolve(window.solcWrapper);
-    const Module = { 
-      onRuntimeInitialized: () => { 
-        window.solcWrapper = Module; 
-        resolve(Module); 
-      } 
-    };
+
     window.Module = Module;
     if (typeof solc === 'function') solc(Module);
     else {
@@ -681,48 +673,86 @@ function updateEnergyCard() {
 }
 
 // ===== STEP 5: DEPLOY =====
-async function deployContract() {
-  if (!tronWeb || !compiledOutput) return;
-  hide('deployResult'); hide('deployError');
-  $('deployBtn').disabled = true;
-  show('deployLoading'); hide('deployBtnText');
+// ===== STEP 4: COMPILE (FIXED VERSION) =====
+let solcCompiler = null; // cache instantiated compiler
+
+async function ensureSolc() {
+  if (solcCompiler) return solcCompiler;
+  if (typeof window.solc === 'undefined') {
+    // Try load from unpkg if jsdelivr failed
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/solc@0.8.20/soljson.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  // INSTANTIATE THE FACTORY
+  solcCompiler = window.solc();
+  return solcCompiler;
+}
+
+async function compileContract() {
+  hide('compileError'); hide('compileResult'); hide('postCompileActions');
+  $('compileBtn').disabled = true;
+  show('compileLoading'); hide('compileBtnText');
 
   try {
-    const contract = tronWeb.contract(compiledOutput.abi, '', { bytecode: contractBytecode });
+    const compiler = await ensureSolc();
+    
     const name = $('tkName').value.trim();
     const symbol = $('tkSymbol').value.trim();
     const supply = $('tkSupply').value.trim();
     const uri = $('tokenURI').value.trim();
+    const mintable = $('optMintable').checked;
+    const burnable = $('optBurnable').checked;
+    const ownable = $('optOwnable').checked;
 
-    // Estimate energy first to set fee limit
-    const estEnergy = estimateDeployEnergy(contractBytecode);
-    const feeLimit = Math.max(estEnergy + 50000, 100000000); // min 100 TRX fee limit safety
+    if (!name || !symbol || !supply || !uri) throw new Error('تمام فیلدها الزامی هستند');
 
-    const tx = await contract.new(name, symbol, supply, uri).send({
-      feeLimit: feeLimit,
-      callValue: 0,
-      shouldPollResponse: true
+    const source = buildContractSource(name, symbol, supply, uri, mintable, burnable, ownable);
+
+    const input = JSON.stringify({
+      language: 'Solidity',
+      sources: { 'Token.sol': { content: source } },
+      settings: {
+        optimizer: { enabled: true, runs: 200 },
+        outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object'] } }
+      }
     });
 
-    const txid = tx.transaction.txID || tx.txid || tx;
-    const receipt = await waitForReceipt(txid);
-    
-    const contractAddress = receipt.contract_address || receipt.contractAddress;
-    if (!contractAddress) throw new Error('آدرس قرارداد در رسید یافت نشد. TxID: ' + txid);
+    // 30s timeout
+    const output = JSON.parse(await Promise.race([
+      compiler.compile(input),
+      new Promise((_, r) => setTimeout(() => r(new Error('Timeout: کامپایل >۳۰ ثانیه')), 30000))
+    ]));
 
-    setText('contractAddr', contractAddress);
-    setText('txId', txid);
-    $('tronscanLink').href = `https://tronscan.org/#/contract/${contractAddress}`;
-    $('tronscanVerifyLink').href = `https://tronscan.org/#/contract/${contractAddress}#code`;
-    
-    show('deployResult'); hide('deployError');
+    if (output.errors) {
+      const err = output.errors.find(e => e.severity === 'error');
+      if (err) throw new Error(err.formattedMessage);
+    }
+
+    const contract = output.contracts['Token.sol']['MyToken'];
+    contractBytecode = '0x' + contract.evm.bytecode.object;
+    contractABI = JSON.stringify(contract.abi, null, 2);
+
+    compiledOutput = { bytecode: contractBytecode, abi: contract.abi };
+    $('bytecodeOut').value = contractBytecode;
+    $('abiOut').value = contractABI;
+    setText('bytecodeSize', (contractBytecode.length / 2 - 1).toLocaleString() + ' bytes');
+    setText('abiCount', contract.abi.length);
+    setText('estDeployEnergy', estimateDeployEnergy(contractBytecode).toLocaleString());
+
+    show('compileResult'); hide('compileError');
+    show('postCompileActions');
+    updateEnergyCard();
   } catch (e) {
     console.error(e);
-    setText('deployErrMsg', e.message || JSON.stringify(e));
-    show('deployError');
+    setText('compileErrMsg', e.message || e);
+    show('compileError');
   } finally {
-    $('deployBtn').disabled = false;
-    hide('deployLoading'); show('deployBtnText');
+    $('compileBtn').disabled = false;
+    hide('compileLoading'); show('compileBtnText');
   }
 }
 
