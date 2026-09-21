@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚀 TRC-20 Token Deployer | Zero-Fee & Self-Custody</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Vazirmatn', sans-serif; }
+  .step { display: none; } .step.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .btn { transition: all 0.2s; } .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .log-box { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem; line-height: 1.5; }
+  .energy-bar { background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e); height: 8px; border-radius: 4px; position: relative; }
+  .energy-bar::after { content: ''; position: absolute; top: 0; bottom: 0; width: var(--w, 0%); background: rgba(255,255,255,0.3); border-radius: 4px; }
+  .copy-btn { transition: all 0.15s; } .copy-btn:hover { background: #374151; } .copy-btn.copied { background: #16a34a; }
+  .contract-card { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+  .contract-card summary { cursor: pointer; user-select: none; list-style: none; }
+  .contract-card summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 text-white py-6 sm:py-8">
+  <div class="max-w-5xl mx-auto px-4 text-center">
+    <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-2">سازماندهی توکن TRC-20</h1>
+    <p class="text-indigo-100 text-lg max-w-2xl mx-auto">دیپلوی قرارداد هوشمند استاندارد، با لوگو، صفر کارمزد سرویس، کنترل کامل کلید خصوصی</p>
+    <div class="mt-4 flex flex-wrap justify-center gap-2 text-xs text-indigo-200">
+      <span class="px-3 py-1 bg-white/10 rounded-full">solc 0.8.20</span>
+      <span class="px-3 py-1 bg-white/10 rounded-full">OpenZeppelin Flattened</span>
+      <span class="px-3 py-1 bg-white/10 rounded-full">TronLink Native</span>
+      <span class="px-3 py-1 bg-white/10 rounded-full">Energy Estimator</span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-4 py-8">
+
+  <div id="walletBar" class="mb-6 p-4 rounded-xl bg-white border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div id="walletIcon" class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12V7H5v5a2 2 0 002 2h10a2 2 0 002-2z"/><path d="M3 5v14a2 2 0 002 2h14v-5"/></svg>
+      </div>
+      <div>
+        <p id="walletStatus" class="font-medium text-gray-700">کیف پول متصل نشده</p>
+        <p id="walletAddress" class="text-xs text-gray-400 hidden"></p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+        <span class="text-xs text-gray-500">TRX:</span>
+        <span id="trxBalance" class="font-mono font-medium text-gray-800">--</span>
+      </div>
+      <div class="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+        <span class="text-xs text-amber-700">Energy:</span>
+        <span id="energyBalance" class="font-mono font-medium text-amber-700">--</span>
+      </div>
+      <div class="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200">
+        <span class="text-xs text-blue-700">Bandwidth:</span>
+        <span id="bandwidthBalance" class="font-mono font-medium text-blue-700">--</span>
+      </div>
+      <button id="connectBtn" class="btn px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hidden" onclick="connectWallet()">اتصال TronLink</button>
+      <button id="disconnectBtn" class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm border border-gray-200" onclick="disconnectWallet()">انقطاع</button>
+    </div>
+  </div>
+
+  <div class="mb-8 overflow-x-auto">
+    <ol class="flex items-center" role="list" aria-label="Progress steps">
+      <li class="flex items-center" id="stepInd1"><span class="step-num w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">1</span><span class="step-label hidden sm:block ml-2 text-sm font-medium text-indigo-600">کیف پول</span></li>
+      <li class="flex items-center" id="stepInd2"><span class="step-line flex-1 h-1 bg-gray-200"></span><span class="step-num w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">2</span><span class="step-label hidden sm:block ml-2 text-sm font-medium text-gray-400">لوگو/متاداتا</span></li>
+      <li class="flex items-center" id="stepInd3"><span class="step-line flex-1 h-1 bg-gray-200"></span><span class="step-num w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">3</span><span class="step-label hidden sm:block ml-2 text-sm font-medium text-gray-400">اطلاعات توکن</span></li>
+      <li class="flex items-center" id="stepInd4"><span class="step-line flex-1 h-1 bg-gray-200"></span><span class="step-num w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">4</span><span class="step-label hidden sm:block ml-2 text-sm font-medium text-gray-400">کامپایل</span></li>
+      <li class="flex items-center" id="stepInd5"><span class="step-line flex-1 h-1 bg-gray-200"></span><span class="step-num w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold text-sm">5</span><span class="step-label hidden sm:block ml-2 text-sm font-medium text-gray-400">دیپلوی</span></li>
+    </ol>
+  </div>
+
+  <section id="step1" class="step active bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+    <div class="text-center py-8">
+      <div class="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+        <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+      </div>
+      <h2 class="text-2xl font-bold text-gray-800 mb-2">مرحله ۱: اتصال کیف پول TronLink</h2>
+      <p class="text-gray-500 mb-6 max-w-md mx-auto">ابزار مستقیماً با TronLink در مرورگر شما ارتباط برقرار می‌کند. کلید خصوصی <strong>هرگز</strong> از کیف پول خارج نمی‌شود.</p>
+      <button id="connectBtnMain" class="btn px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-lg shadow-lg" onclick="connectWallet()">
+        <span class="flex items-center justify-center gap-2"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M21 12V7H5v5a2 2 0 002 2h10a2 2 0 002-2z"/><path d="M3 5v14a2 2 0 002 2h14v-5"/></svg> اتصال کیف پول TronLink</span>
+      </button>
+      <p class="mt-4 text-xs text-gray-400">نیاز به افزونه TronLink در Chrome/Edge/Brave دارید</p>
+    </div>
+    <div id="walletInfo" class="hidden mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+      <h3 class="font-semibold text-green-800 mb-3 flex items-center gap-2">✅ کیف پول متصل شد</h3>
+      <div class="grid sm:grid-cols-3 gap-4 text-sm">
+        <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">آدرس</p><p id="dispAddr" class="font-mono text-xs text-gray-700 break-all"></p></div>
+        <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">موجودی TRX</p><p id="dispTrx" class="font-mono text-gray-700"></p></div>
+        <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">Energy آزاد</p><p id="dispEnergy" class="font-mono text-amber-700"></p></div>
+      </div>
+      <button class="btn mt-4 w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium" onclick="goStep(2)">مرحله بعد: لوگو و متاداتا →</button>
+    </div>
+  </section>
+
+  <section id="step2" class="step bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">مرحله ۲: لوگو و متاداتا (IPFS)</h2>
+        <p class="text-gray-500 mt-1">لوگو باید روی IPFS آپلود شود تا در TronScan، دکس‌ها و کیف‌پول‌ها نمایش داده شود.</p>
+      </div>
+      <button class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border" onclick="goStep(1)"><svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> قبلی</button>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+        <h3 class="font-semibold text-gray-800 mb-4 flex items-center gap-2">📤 آپلود رایگان روی Pinata (IPFS)</h3>
+        <ol class="space-y-3 text-sm text-gray-600" dir="ltr">
+          <li class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">1</span><div>به <a href="https://app.pinata.cloud/" target="_blank" class="text-indigo-600 hover:underline font-medium">app.pinata.cloud</a> بروید → Sign up (رایگان ۱GB)</div></li>
+          <li class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">2</span><div>Files → Upload → <code class="bg-white px-1.5 py-0.5 rounded text-indigo-600 font-mono text-xs">logo.png</code> (۲۵۶×۲۵۶، PNG شفاف)</div></li>
+          <li class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">3</span><div>فایل <code class="bg-white px-1.5 py-0.5 rounded text-indigo-600 font-mono text-xs">metadata.json</code> بسازید و آپلود کنید (نمونه زیر)</div></li>
+          <li class="flex gap-3"><span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-bold">4</span><div>CID فایل metadata را کپی کنید → فرمت: <code class="bg-white px-1.5 py-0.5 rounded text-indigo-600 font-mono text-xs">ipfs://QmXxx...metadata.json</code></div></li>
+        </ol>
+      </div>
+
+      <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+        <h3 class="font-semibold text-gray-800 mb-3">📋 قالب metadata.json</h3>
+        <div class="relative">
+          <button class="copy-btn absolute top-2 left-2 px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300" onclick="copyMetadataTemplate(this)">کپی</button>
+          <pre class="log-box bg-gray-900 text-green-300 p-4 rounded-lg overflow-auto max-h-64" id="metadataTemplate">{
+  "name": "My Token",
+  "symbol": "MTK",
+  "description": "My TRC-20 token with logo",
+  "image": "ipfs://QmLogoHashHere",
+  "decimals": 18,
+  "website": "https://example.com",
+  "social": {
+    "twitter": "https://twitter.com/yourhandle",
+    "telegram": "https://t.me/yourgroup"
+  }
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <label class="block text-sm font-medium text-gray-700 mb-2">لینک متاداتا IPFS (ipfs://... یا https://gateway...)</label>
+      <div class="relative">
+        <input type="text" id="tokenURI" class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-24" placeholder="ipfs://QmMetadataHash... یا https://gateway.pinata.cloud/ipfs/QmMetadataHash..." dir="ltr">
+        <button class="copy-btn absolute left-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded" onclick="pasteFromClipboard('tokenURI')">پیست</button>
+      </div>
+      <p id="uriHint" class="mt-2 text-xs text-gray-500 hidden">✅ فرمت معتبر است</p>
+    </div>
+
+    <div class="mt-6 flex justify-end gap-3">
+      <button class="btn px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium border" onclick="goStep(1)">← قبلی</button>
+      <button id="nextStep2" class="btn px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium" onclick="validateURIAndNext()">بعدی: اطلاعات توکن →</button>
+    </div>
+  </section>
+
+  <section id="step3" class="step bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">مرحله ۳: مشخصات توکن</h2>
+        <p class="text-gray-500 mt-1">اطلاعات Constructor قرارداد را پر کنید.</p>
+      </div>
+      <button class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border" onclick="goStep(2)"><svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> قبلی</button>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-6 mb-6">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">نام توکن <span class="text-indigo-600">*</span></label>
+        <input type="text" id="tkName" class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" placeholder="My Awesome Token" value="My Token">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">نماد (Symbol) <span class="text-indigo-600">*</span></label>
+        <input type="text" id="tkSymbol" class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" placeholder="MAT" value="MTK" maxlength="10">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">جمع کل (Total Supply) <span class="text-indigo-600">*</span></label>
+        <div class="relative">
+          <input type="number" id="tkSupply" class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 pr-16" placeholder="1000000" value="1000000" min="1" step="1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">بدون دسیمال</span>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">دسیمال (Decimals)</label>
+        <input type="number" id="tkDecimals" class="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" value="18" min="0" max="18" readonly>
+        <p class="mt-1 text-xs text-gray-500">ثابت روی ۱۸ (استاندارد TRC-20)</p>
+      </div>
+    </div>
+
+    <details class="mb-6 group">
+      <summary class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer font-medium">
+        <svg class="w-5 h-5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        گزینه‌های پیشرفته (Mintable, Burnable, Ownable)
+      </summary>
+      <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3 text-sm">
+        <label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="optMintable" checked class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"><span class="text-gray-700">Mintable (اونر می‌تواند توکن جدید بسازد)</span></label>
+        <label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="optBurnable" checked class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"><span class="text-gray-700">Burnable (هر کسی می‌تواند توکن خود را بسوزاند)</span></label>
+        <label class="flex items-center gap-3 cursor-pointer"><input type="checkbox" id="optOwnable" checked class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"><span class="text-gray-700">Ownable (مالکیت و کنترل قرارداد)</span></label>
+        <p class="text-xs text-gray-500">توصیه: همه سه فعال باشند برای انعطاف حداکثر</p>
+      </div>
+    </details>
+
+    <div class="flex justify-end gap-3">
+      <button class="btn px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium border" onclick="goStep(2)">← قبلی</button>
+      <button class="btn px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium" onclick="goStep(4)">بعدی: کامپایل قرارداد →</button>
+    </div>
+  </section>
+
+  <section id="step4" class="step bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">مرحله ۴: کامپایل قرارداد</h2>
+        <p class="text-gray-500 mt-1">کد Solidity در مرورگر کامپایل می‌شود. Bytecode و ABI تولید می‌شوند.</p>
+      </div>
+      <button class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border" onclick="goStep(3)"><svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> قبلی</button>
+    </div>
+
+    <div class="mb-6">
+      <button id="compileBtn" class="btn w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-lg shadow-lg" onclick="compileContract()">
+        <span id="compileBtnText" class="flex items-center justify-center gap-2"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg> کامپایل قرارداد</span>
+        <span id="compileLoading" class="hidden flex items-center justify-center gap-2"><svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> در حال کامپایل...</span>
+      </button>
+    </div>
+
+    <div id="compileResult" class="hidden space-y-4">
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+        <h3 class="font-semibold text-green-800 mb-3 flex items-center gap-2">✅ کامپایل موفقیت‌آمیز</h3>
+        <div class="grid sm:grid-cols-3 gap-4 text-sm mb-4">
+          <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">Bytecode Size</p><p id="bytecodeSize" class="font-mono text-gray-700"></p></div>
+          <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">ABI Methods</p><p id="abiCount" class="font-mono text-gray-700"></p></div>
+          <div class="bg-white p-3 rounded-lg border"><p class="text-green-600 font-medium">Est. Deploy Energy</p><p id="estDeployEnergy" class="font-mono text-amber-700"></p></div>
+        </div>
+        <details class="contract-card group">
+          <summary class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer font-medium p-3 bg-gray-50 border-b"><svg class="w-5 h-5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg> نمایش Bytecode / ABI (برای Verify در Tronscan)</summary>
+          <div class="p-3 space-y-3">
+            <div><label class="block text-xs text-gray-500 mb-1">Bytecode (کپی برای Verify)</label><div class="relative"><button class="copy-btn absolute top-1 left-1 px-2 py-0.5 text-xs" onclick="copyToClipboard('bytecodeOut', this)">کپی</button><textarea id="bytecodeOut" class="log-box bg-gray-900 text-green-300 p-4 rounded-lg w-full h-32 resize-none" readonly></textarea></div></div>
+            <div><label class="block text-xs text-gray-500 mb-1">ABI (JSON)</label><div class="relative"><button class="copy-btn absolute top-1 left-1 px-2 py-0.5 text-xs" onclick="copyToClipboard('abiOut', this)">کپی</button><textarea id="abiOut" class="log-box bg-gray-900 text-blue-300 p-4 rounded-lg w-full h-32 resize-none" readonly></textarea></div></div>
+          </div>
+        </details>
+      </div>
+
+      <div id="compileError" class="hidden bg-red-50 border border-red-200 rounded-xl p-4">
+        <h3 class="font-semibold text-red-800 mb-2 flex items-center gap-2">❌ خطای کامپایل</h3>
+        <pre id="compileErrMsg" class="log-box bg-red-900 text-red-300 p-3 rounded-lg overflow-auto"></pre>
+      </div>
+    </div>
+
+    <div id="postCompileActions" class="hidden mt-6 flex justify-end gap-3">
+      <button class="btn px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium border" onclick="goStep(3)">← قبلی</button>
+      <button class="btn px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium" onclick="goStep(5)">بعدی: دیپلوی →</button>
+    </div>
+  </section>
+
+  <section id="step5" class="step bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-800">مرحله ۵: دیپلوی روی Mainnet</h2>
+        <p class="text-gray-500 mt-1">مقدار Energy مورد نیاز تخمین زده شده و تراکنش در TronLink امضا می‌شود.</p>
+      </div>
+      <button class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border" onclick="goStep(4)"><svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> قبلی</button>
+    </div>
+
+    <div id="energyCard" class="mb-6 p-5 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl hidden">
+      <h3 class="font-semibold text-indigo-800 mb-4 flex items-center gap-2">⚡ تخمین هزینه Energy</h3>
+      <div class="grid sm:grid-cols-4 gap-4 text-sm mb-4">
+        <div class="bg-white p-3 rounded-lg border"><p class="text-indigo-600 font-medium">Energy مورد نیاز</p><p id="estEnergy" class="font-mono text-xl text-indigo-700">--</p></div>
+        <div class="bg-white p-3 rounded-lg border"><p class="text-indigo-600 font-medium">TRX معادل (Burn)</p><p id="estTrx" class="font-mono text-xl text-indigo-700">--</p></div>
+        <div class="bg-white p-3 rounded-lg border"><p class="text-indigo-600 font-medium">Energy موجود</p><p id="availEnergy" class="font-mono text-xl text-amber-700">--</p></div>
+        <div class="bg-white p-3 rounded-lg border"><p class="text-indigo-600 font-medium">Bandwidth موجود</p><p id="availBandwidth" class="font-mono text-xl text-blue-700">--</p></div>
+      </div>
+      <div class="mb-2">
+        <div class="flex justify-between text-xs mb-1"><span class="text-gray-500">محدودیت Energy حساب</span><span id="energyPct" class="font-medium text-indigo-700">--%</span></div>
+        <div class="energy-bar" style="--w: 0%"></div>
+      </div>
+      <p id="energyHint" class="mt-2 text-xs text-gray-500"></p>
+    </div>
+
+    <div class="mb-6">
+      <button id="deployBtn" class="btn w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-semibold text-lg shadow-lg" onclick="deployContract()" disabled>
+        <span id="deployBtnText" class="flex items-center justify-center gap-2"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg> دیپلوی قرارداد</span>
+        <span id="deployLoading" class="hidden flex items-center justify-center gap-2"><svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> در حال ارسال تراکنش...</span>
+      </button>
+      <p id="deployNote" class="mt-2 text-xs text-gray-500 text-center">ابتدا کامپایل را در مرحله قبل انجام دهید</p>
+    </div>
+
+    <div id="deployResult" class="hidden space-y-4">
+      <div class="bg-green-50 border border-green-200 rounded-xl p-5">
+        <h3 class="font-semibold text-green-800 mb-4 flex items-center gap-2">🎉 توکن با موفقیت دیپلوی شد!</h3>
+        <div class="space-y-3">
+          <div class="bg-white p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div><p class="text-xs text-gray-500">آدرس قرارداد</p><p id="contractAddr" class="font-mono text-sm text-gray-800 break-all"></p></div>
+            <button class="copy-btn px-3 py-1.5 text-xs" onclick="copyToClipboard('contractAddr', this)">کپی آدرس</button>
+          </div>
+          <div class="bg-white p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div><p class="text-xs text-gray-500">TxID</p><p id="txId" class="font-mono text-sm text-gray-800 break-all"></p></div>
+            <button class="copy-btn px-3 py-1.5 text-xs" onclick="copyToClipboard('txId', this)">کپی TxID</button>
+          </div>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <a id="tronscanLink" target="_blank" class="btn px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm flex items-center gap-2"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> مشاهده در Tronscan</a>
+          <a id="tronscanVerifyLink" target="_blank" class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border flex items-center gap-2">✅ Verify & Publish</a>
+          <button class="btn px-4 py-2 bg-amber-600 text-white rounded-lg text-sm flex items-center gap-2" onclick="addToTronLink()">➕ افزودن به TronLink</button>
+        </div>
+      </div>
+
+      <div id="deployError" class="hidden bg-red-50 border border-red-200 rounded-xl p-5">
+        <h3 class="font-semibold text-red-800 mb-2 flex items-center gap-2">❌ خطای دیپلوی</h3>
+        <pre id="deployErrMsg" class="log-box bg-red-900 text-red-300 p-3 rounded-lg overflow-auto"></pre>
+        <div class="mt-4 flex gap-3">
+          <button class="btn px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm" onclick="goStep(4)">بازگشت به کامپایل</button>
+          <button class="btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm border" onclick="window.location.reload()">شروع از نو</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="bg-gray-900 text-gray-400 py-8 mt-12">
+  <div class="max-w-5xl mx-auto px-4 text-center text-sm">
+    <p>ساخته شده با ❤️ برای اکوسیستم ترون | کد باز، بدون بک‌اند، کنترل کامل شما</p>
+    <p class="mt-1">⚠️ مسئولیت استفاده از قرارداد و مدیریت توکن بر عهده شماست | قوانین کشور خود را رعایت کنید</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/solc@0.8.20/soljson.js"></script>
+
+<script>
+// ===== FLATTENED CONTRACT SOURCE (OpenZeppelin 5.0.2 compatible, solc 0.8.20) =====
+const FLATTENED_SOURCE = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) { return msg.sender; }
+    function _msgData() internal view virtual returns (bytes calldata) { return msg.data; }
+}
+
+contract Ownable is Context {
+    address private _owner;
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    constructor() { _transferOwnership(_msgSender()); }
+    function owner() public view returns (address) { return _owner; }
+    modifier onlyOwner() { require(owner() == _msgSender(), "Ownable: caller is not the owner"); _; }
+    function renounceOwnership() public virtual onlyOwner { _transferOwnership(address(0)); }
+    function transferOwnership(address newOwner) public virtual onlyOwner { require(newOwner != address(0), "Ownable: new owner is the zero address"); _transferOwnership(newOwner); }
+    function _transferOwnership(address newOwner) internal virtual { address oldOwner = _owner; _owner = newOwner; emit OwnershipTransferred(oldOwner, newOwner); }
+}
+
+interface ITRC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract TRC20 is Context, ITRC20 {
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+    uint256 private _totalSupply;
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+    constructor(string memory name_, string memory symbol_) { _name = name_; _symbol = symbol_; _decimals = 18; }
+    function name() public view returns (string memory) { return _name; }
+    function symbol() public view returns (string memory) { return _symbol; }
+    function decimals() public view returns (uint8) { return _decimals; }
+    function totalSupply() public view override returns (uint256) { return _totalSupply; }
+    function balanceOf(address account) public view override returns (uint256) { return _balances[account]; }
+    function transfer(address to, uint256 amount) public virtual override returns (bool) { address owner = _msgSender(); _transfer(owner, to, amount); return true; }
+    function allowance(address owner, address spender) public view virtual override returns (uint256) { return _allowances[owner][spender]; }
+    function approve(address spender, uint256 amount) public virtual override returns (bool) { _approve(_msgSender(), spender, amount); return true; }
+    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) { _spendAllowance(from, _msgSender(), amount); _transfer(from, to, amount); return true; }
+    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) { _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue); return true; }
+    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) { uint256 currentAllowance = _allowances[_msgSender()][spender]; require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero"); _approve(_msgSender(), spender, currentAllowance - subtractedValue); return true; }
+    function _transfer(address from, address to, uint256 amount) internal virtual { require(from != address(0), "ERC20: transfer from the zero address"); require(to != address(0), "ERC20: transfer to the zero address"); _beforeTokenTransfer(from, to, amount); _balances[from] -= amount; _balances[to] += amount; emit Transfer(from, to, amount); _afterTokenTransfer(from, to, amount); }
+    function _mint(address to, uint256 amount) internal virtual { require(to != address(0), "ERC20: mint to the zero address"); _beforeTokenTransfer(address(0), to, amount); _totalSupply += amount; _balances[to] += amount; emit Transfer(address(0), to, amount); _afterTokenTransfer(address(0), to, amount); }
+    function _burn(address from, uint256 amount) internal virtual { require(from != address(0), "ERC20: burn from the zero address"); _beforeTokenTransfer(from, address(0), amount); _balances[from] -= amount; _totalSupply -= amount; emit Transfer(from, address(0), amount); _afterTokenTransfer(from, address(0), amount); }
+    function _approve(address owner, address spender, uint256 amount) internal virtual { require(owner != address(0), "ERC20: approve from the zero address"); require(spender != address(0), "ERC20: approve to the zero address"); _allowances[owner][spender] = amount; emit Approval(owner, spender, amount); }
+    function _spendAllowance(address owner, address spender, uint256 amount) internal virtual { uint256 currentAllowance = _allowances[owner][spender]; require(currentAllowance >= amount, "ERC20: insufficient allowance"); _approve(owner, spender, currentAllowance - amount); }
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual {}
+    function _afterTokenTransfer(address from, address to, uint256 amount) internal virtual {}
+}
+
+contract TRC20Burnable is Context, TRC20 {
+    function burn(uint256 amount) public virtual { _burn(_msgSender(), amount); }
+    function burnFrom(address account, uint256 amount) public virtual { _spendAllowance(account, _msgSender(), amount); _burn(account, amount); }
+}`;
+
+// ===== STATE =====
+let currentStep = 1;
+let tronWeb = null;
+let userAddress = null;
+let compiledOutput = null;
+let contractBytecode = '';
+let contractABI = '';
+
+// ===== DOM HELPERS =====
+const $ = (id) => document.getElementById(id);
+const show = (id) => { const el = $(id); if(el) el.classList.remove('hidden'); };
+const hide = (id) => { const el = $(id); if(el) el.classList.add('hidden'); };
+const setText = (id, text) => { const el = $(id); if(el) el.textContent = text; };
+const setVal = (id, val) => { const el = $(id); if(el) el.value = val; };
+
+// ===== STEP NAVIGATION =====
+function goStep(step) {
+  if (step < 1 || step > 5) return;
+  if (step === 2 && !userAddress) { alert('ابتدا کیف پول را وصل کنید'); return; }
+  if (step === 4 && !compiledOutput) { alert('ابتدا قرارداد را کامپایل کنید'); return; }
+  if (step === 5 && !compiledOutput) { alert('ابتدا قرارداد را کامپایل کنید'); return; }
+
+  for (let i = 1; i <= 5; i++) {
+    const el = $(`step${i}`);
+    const ind = $(`stepInd${i}`);
+    if (!el || !ind) continue;
+    const num = ind.querySelector('.step-num');
+    const lbl = ind.querySelector('.step-label');
+    const line = ind.querySelector('.step-line');
+    if (i === step) {
+      el.classList.add('active');
+      num?.classList.replace('bg-gray-200', 'bg-indigo-600');
+      num?.classList.replace('text-gray-400', 'text-white');
+      num?.classList.replace('bg-green-600', 'bg-indigo-600');
+      lbl?.classList.replace('text-gray-400', 'text-indigo-600');
+      lbl?.classList.replace('text-green-600', 'text-indigo-600');
+      line?.classList.replace('bg-gray-200', 'bg-indigo-600');
+      line?.classList.replace('bg-green-600', 'bg-indigo-600');
+    } else {
+      el.classList.remove('active');
+      if (i < step) {
+        num?.classList.replace('bg-indigo-600', 'bg-green-600');
+        num?.classList.replace('bg-gray-200', 'bg-green-600');
+        num?.classList.replace('text-gray-400', 'text-white');
+        lbl?.classList.replace('text-indigo-600', 'text-green-600');
+        lbl?.classList.replace('text-gray-400', 'text-green-600');
+        line?.classList.replace('bg-indigo-600', 'bg-green-600');
+        line?.classList.replace('bg-gray-200', 'bg-green-600');
+      } else {
+        num?.classList.replace('bg-green-600', 'bg-gray-200');
+        num?.classList.replace('bg-indigo-600', 'bg-gray-200');
+        num?.classList.replace('text-white', 'text-gray-400');
+        lbl?.classList.replace('text-green-600', 'text-gray-400');
+        lbl?.classList.replace('text-indigo-600', 'text-gray-400');
+        line?.classList.replace('bg-green-600', 'bg-gray-200');
+        line?.classList.replace('bg-indigo-600', 'bg-gray-200');
+      }
+    }
+  }
+  currentStep = step;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ===== TRONLINK INTEGRATION =====
+async function connectWallet() {
+  if (typeof window.tronWeb === 'undefined' || !window.tronWeb.ready) {
+    alert('❌ TronLink نصب نشده یا باز نیست.\n\nراه‌حل:\n1. افزونه TronLink را نصب/باز کنید\n2. مطمئن شوید سایت با http:// یا https:// باز شده (نه file://)\n3. صفحه را رفرش کنید');
+    window.open('https://www.tronlink.org/', '_blank');
+    return;
+  }
+  try {
+    if (!window.tronWeb.defaultAddress.base58) {
+      await window.tronWeb.request({ method: 'tron_requestAccounts' });
+    }
+    tronWeb = window.tronWeb;
+    userAddress = tronWeb.defaultAddress.base58;
+    updateWalletUI();
+    hide('connectBtn'); hide('connectBtnMain');
+    show('disconnectBtn'); show('walletInfo');
+    setText('dispAddr', userAddress);
+    goStep(2);
+  } catch (e) {
+    console.error(e);
+    alert('خطا در اتصال: ' + e.message);
+  }
+}
+
+function disconnectWallet() {
+  userAddress = null; tronWeb = null;
+  show('connectBtn'); show('connectBtnMain');
+  hide('disconnectBtn'); hide('walletInfo');
+  setText('trxBalance', '--'); setText('energyBalance', '--'); setText('bandwidthBalance', '--');
+  goStep(1);
+}
+
+async function updateWalletUI() {
+  if (!tronWeb) return;
+  try {
+    const balanceSun = await tronWeb.trx.getBalance(userAddress);
+    const trx = (Number(balanceSun) / 1e6).toFixed(4);
+    setText('trxBalance', trx);
+    setText('dispTrx', trx + ' TRX');
+
+    const account = await tronWeb.trx.getAccount(userAddress);
+    let energy = 0, bandwidth = 0;
+    if (account && account.frozenV2) {
+      for (const f of account.frozenV2) {
+        if (f.type === 'ENERGY') energy += Number(f.amount);
+        if (f.type === 'BANDWIDTH') bandwidth += Number(f.amount);
+      }
+    }
+    if (account && account.frozen) {
+      for (const f of account.frozen) {
+        if (f.type === 'ENERGY') energy += Number(f.frozen_balance);
+        if (f.type === 'BANDWIDTH') bandwidth += Number(f.frozen_balance);
+      }
+    }
+    const energyLimit = account?.energy_limit || 0;
+    const energyUsed = account?.energy_used || 0;
+    const availEnergy = Math.max(0, energyLimit - energyUsed);
+    const bwLimit = account?.bandwidth_limit || 0;
+    const bwUsed = account?.bandwidth_used || 0;
+    const availBandwidth = Math.max(0, bwLimit - bwUsed);
+
+    setText('energyBalance', availEnergy.toLocaleString());
+    setText('bandwidthBalance', availBandwidth.toLocaleString());
+    setText('dispEnergy', availEnergy.toLocaleString());
+    setText('dispAddr', userAddress);
+  } catch (e) {
+    console.warn('Wallet UI update failed:', e);
+  }
+}
+
+// ===== STEP 2: URI VALIDATION =====
+function copyMetadataTemplate(btn) {
+  const txt = $('metadataTemplate').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    btn.textContent = 'کپی شد!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'کپی'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+async function pasteFromClipboard(targetId) {
+  try { const txt = await navigator.clipboard.readText(); setVal(targetId, txt); validateURI(); } catch(e) { alert('دسترسی کلیپ‌بورد رد شد. دستی پیست کنید.'); }
+}
+function validateURI() {
+  const v = $('tokenURI').value.trim();
+  const ok = v.startsWith('ipfs://') || v.startsWith('https://') || v.startsWith('http://');
+  $('uriHint').classList.toggle('hidden', !ok || !v);
+  $('uriHint').textContent = ok ? '✅ فرمت معتبر است' : '⚠️ باید با ipfs:// یا https:// شروع شود';
+  return ok && v.length > 10;
+}
+function validateURIAndNext() { if (validateURI()) goStep(3); else $('tokenURI').focus(); }
+
+// ===== STEP 4: COMPILE =====
+async function compileContract() {
+  hide('compileError'); hide('compileResult'); hide('postCompileActions');
+  $('compileBtn').disabled = true;
+  show('compileLoading'); hide('compileBtnText');
+
+  try {
+    if (typeof solc === 'undefined' || !window.solcWrapper) { await initSolcWrapper(); }
+    const compiler = window.solcWrapper;
+
+    const name = $('tkName').value.trim();
+    const symbol = $('tkSymbol').value.trim();
+    const supply = $('tkSupply').value.trim();
+    const uri = $('tokenURI').value.trim();
+    const mintable = $('optMintable').checked;
+    const burnable = $('optBurnable').checked;
+    const ownable = $('optOwnable').checked;
+
+    if (!name || !symbol || !supply || !uri) { throw new Error('تمام فیلدها الزامی هستند'); }
+
+    const source = buildContractSource(name, symbol, supply, uri, mintable, burnable, ownable);
+
+    const input = JSON.stringify({
+      language: 'Solidity',
+      sources: { 'Token.sol': { content: source } },
+      settings: {
+        optimizer: { enabled: true, runs: 200 },
+        outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object', 'evm.deployedBytecode.object'] } }
+      }
+    });
+
+    const output = JSON.parse(compiler.compile(input));
+    if (output.errors) {
+      const err = output.errors.find(e => e.severity === 'error');
+      if (err) throw new Error(err.formattedMessage);
+    }
+
+    const contract = output.contracts['Token.sol']['MyToken'];
+    contractBytecode = '0x' + contract.evm.bytecode.object;
+    contractABI = JSON.stringify(contract.abi, null, 2);
+
+    compiledOutput = { bytecode: contractBytecode, abi: contract.abi };
+    $('bytecodeOut').value = contractBytecode;
+    $('abiOut').value = contractABI;
+    setText('bytecodeSize', (contractBytecode.length / 2 - 1).toLocaleString() + ' bytes');
+    setText('abiCount', contract.abi.length);
+    setText('estDeployEnergy', estimateDeployEnergy(contractBytecode).toLocaleString());
+
+    show('compileResult'); hide('compileError');
+    show('postCompileActions');
+    updateEnergyCard();
+  } catch (e) {
+    console.error(e);
+    setText('compileErrMsg', e.message || e);
+    show('compileError');
+  } finally {
+    $('compileBtn').disabled = false;
+    hide('compileLoading'); show('compileBtnText');
+  }
+}
+
+function initSolcWrapper() {
+  return new Promise((resolve) => {
+    if (window.solcWrapper) return resolve(window.solcWrapper);
+    const Module = { 
+      onRuntimeInitialized: () => { 
+        window.solcWrapper = Module; 
+        resolve(Module); 
+      } 
+    };
+    window.Module = Module;
+    if (typeof solc === 'function') solc(Module);
+    else {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/solc@0.8.20/soljson.js';
+      s.onload = () => solc(Module);
+      document.head.appendChild(s);
+    }
+  });
+}
+
+function buildContractSource(name, symbol, supply, uri, mintable, burnable, ownable) {
+  let base = FLATTENED_SOURCE;
+  let parents = ['TRC20'];
+  if (burnable) parents.push('TRC20Burnable');
+  if (ownable) parents.push('Ownable');
+  
+  let constructorInit = '';
+  if (ownable) constructorInit = ' Ownable(msg.sender)';
+  
+  let constructorBody = `    _mint(msg.sender, ${supply} * 10**decimals());\n    tokenURI = "${uri.replace(/"/g, '\\"')}";`;
+  
+  let extraFuncs = '';
+  if (mintable && ownable) extraFuncs += `\n    function mint(address to, uint256 amount) external onlyOwner { _mint(to, amount); }`;
+  else if (mintable && !ownable) extraFuncs += `\n    function mint(address to, uint256 amount) external { _mint(to, amount); }`; // No auth if no ownable
+
+  const contractDef = `contract MyToken is ${parents.join(', ')} {
+    string public tokenURI;
+    constructor(string memory name_, string memory symbol_, uint256 initialSupply_, string memory uri_) TRC20(name_, symbol_)${constructorInit} {
+${constructorBody}
+    }${extraFuncs}
+    function setTokenURI(string memory uri_) external${ownable ? ' onlyOwner' : ''} { tokenURI = uri_; }
+    function getTokenURI() external view returns (string memory) { return tokenURI; }
+}`;
+  
+  // Replace the placeholder contract in base source (simple string replace for the last contract definition)
+  // Since FLATTENED_SOURCE ends with TRC20Burnable, we append MyToken after it.
+  return base + '\n\n' + contractDef;
+}
+
+function estimateDeployEnergy(bytecode) {
+  const byteLen = bytecode.length / 2 - 1;
+  return Math.ceil(byteLen * 210 + 32000);
+}
+
+function updateEnergyCard() {
+  if (!tronWeb || !compiledOutput) return;
+  updateWalletUI().then(() => {
+    const est = estimateDeployEnergy(contractBytecode);
+    const avail = parseInt($('energyBalance').textContent.replace(/,/g, '')) || 0;
+    const bw = parseInt($('bandwidthBalance').textContent.replace(/,/g, '')) || 0;
+    const trxCost = (est * 0.00042).toFixed(4);
+    setText('estEnergy', est.toLocaleString());
+    setText('estTrx', trxCost + ' TRX');
+    setText('availEnergy', avail.toLocaleString());
+    setText('availBandwidth', bw.toLocaleString());
+    const pct = Math.min(100, Math.round((avail / est) * 100));
+    $('energyCard').querySelector('.energy-bar').style.setProperty('--w', pct + '%');
+    setText('energyPct', pct + '%');
+    $('energyHint').textContent = avail >= est ? '✅ Energy کافی دارید — هزینه صفر' : `⚠️ Energy کم است — نیاز به Burn ~${trxCost} TRX یا Stake`;
+    show('energyCard');
+    $('deployBtn').disabled = false;
+    setText('deployNote', 'آماده برای دیپلوی');
+  });
+}
+
+// ===== STEP 5: DEPLOY =====
+async function deployContract() {
+  if (!tronWeb || !compiledOutput) return;
+  hide('deployResult'); hide('deployError');
+  $('deployBtn').disabled = true;
+  show('deployLoading'); hide('deployBtnText');
+
+  try {
+    const contract = tronWeb.contract(compiledOutput.abi, '', { bytecode: contractBytecode });
+    const name = $('tkName').value.trim();
+    const symbol = $('tkSymbol').value.trim();
+    const supply = $('tkSupply').value.trim();
+    const uri = $('tokenURI').value.trim();
+
+    // Estimate energy first to set fee limit
+    const estEnergy = estimateDeployEnergy(contractBytecode);
+    const feeLimit = Math.max(estEnergy + 50000, 100000000); // min 100 TRX fee limit safety
+
+    const tx = await contract.new(name, symbol, supply, uri).send({
+      feeLimit: feeLimit,
+      callValue: 0,
+      shouldPollResponse: true
+    });
+
+    const txid = tx.transaction.txID || tx.txid || tx;
+    const receipt = await waitForReceipt(txid);
+    
+    const contractAddress = receipt.contract_address || receipt.contractAddress;
+    if (!contractAddress) throw new Error('آدرس قرارداد در رسید یافت نشد. TxID: ' + txid);
+
+    setText('contractAddr', contractAddress);
+    setText('txId', txid);
+    $('tronscanLink').href = `https://tronscan.org/#/contract/${contractAddress}`;
+    $('tronscanVerifyLink').href = `https://tronscan.org/#/contract/${contractAddress}#code`;
+    
+    show('deployResult'); hide('deployError');
+  } catch (e) {
+    console.error(e);
+    setText('deployErrMsg', e.message || JSON.stringify(e));
+    show('deployError');
+  } finally {
+    $('deployBtn').disabled = false;
+    hide('deployLoading'); show('deployBtnText');
+  }
+}
+
+async function waitForReceipt(txid, maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const info = await tronWeb.trx.getTransactionInfo(txid);
+      if (info && (info.receipt || info.fee)) return info;
+    } catch(e) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Timeout waiting for receipt');
+}
+
+function addToTronLink() {
+  const addr = $('contractAddr').textContent;
+  if (!addr || !tronWeb) return;
+  tronWeb.request({
+    method: 'wallet_watchAsset',
+    params: {
+      type: 'trc20',
+      options: { address: addr }
+    }
+  }).catch(e => alert('افزودن به تونلینک ناموفق: ' + e.message));
+}
+
+function copyToClipboard(id, btn) {
+  const el = $(id);
+  if (!el) return;
+  const txt = el.value || el.textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    btn.textContent = 'کپی شد!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'کپی'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// ===== AUTO DETECT TRONLINK ON LOAD =====
+(function() {
+  const check = setInterval(() => {
+    if (window.tronWeb && window.tronWeb.ready) {
+      clearInterval(check);
+      console.log('✅ TronLink detected');
+      if (window.tronWeb.defaultAddress.base58) connectWallet();
+    }
+  }, 500);
+  setTimeout(() => clearInterval(check), 10000);
+})();
+
+</script>
+</body>
+</html>
