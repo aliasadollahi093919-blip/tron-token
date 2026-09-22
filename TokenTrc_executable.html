@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TRC-20 Token Deployer</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:900px;margin:30px auto;padding:0 16px;background:#111;color:#eee}
+.card{background:#1b1b1b;padding:20px;border-radius:14px;margin-bottom:16px}
+input,button{padding:10px;margin:6px 0;border-radius:8px;border:1px solid #555}
+input{width:100%;box-sizing:border-box;background:#222;color:#fff}
+button{cursor:pointer;background:#eee;color:#111}
+pre{white-space:pre-wrap;background:#090909;padding:14px;border-radius:10px}
+small{color:#aaa}
+</style>
+</head>
+<body>
+<h1>TRC-20 Token Deployer</h1>
+<div class="card">
+<p>This page compiles the Solidity contract in your browser and deploys it through TronLink.</p>
+<p><b>Network:</b> <span id="network">checking...</span></p>
+<p><b>Wallet:</b> <span id="wallet">not connected</span></p>
+<button onclick="connect()">Connect TronLink</button>
+</div>
+
+<div class="card">
+<label>Name</label><input id="name" value="My Token">
+<label>Symbol</label><input id="symbol" value="MTK">
+<label>Decimals</label><input id="decimals" type="number" value="6" min="0" max="18">
+<label>Initial supply (whole tokens)</label><input id="supply" type="number" value="1000000" min="1">
+<label>Logo URL</label><input id="logo" value="https://YOUR-DOMAIN.com/logo.png">
+<label>Website URL</label><input id="website" value="https://YOUR-DOMAIN.com/">
+<button onclick="deploy()">Compile &amp; Deploy</button>
+</div>
+
+<div class="card"><pre id="log">Ready.</pre></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tronweb@6.0.4/dist/TronWeb.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/solc@0.5.10/solc.min.js"></script>
+<script>
+const SOURCE = `// SPDX-License-Identifier: MIT
+pragma solidity ^0.5.10;
+
+/*
+TRC20 basic implementation for TRON (TVM).
+- Compatible with Solidity 0.5.x
+- Mint fixed supply to deployer
+*/
+
+library SafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 c = a + b; require(c >= a, "add overflow"); return c;
+    }
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b <= a, "sub underflow"); return a - b;
+    }
+    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        if (a == 0) return 0; uint256 c = a * b; require(c / a == b, "mul overflow"); return c;
+    }
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b > 0, "div by zero"); return a / b;
+    }
+}
+
+contract TRC20 {
+    // Logo metadata. This does not by itself register the logo with wallets/explorers.
+    string public constant logoURI = "https://YOUR-DOMAIN.com/logo.png";
+    string public constant website = "https://YOUR-DOMAIN.com/";
+    using SafeMath for uint256;
+
+    string public name;
+    string public symbol;
+    uint8  public decimals;
+    uint256 public totalSupply;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    constructor(
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals,
+        uint256 _initialSupply   // in whole tokens, before decimals
+    ) public {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+
+        uint256 supplyWithDecimals = _initialSupply.mul(10 ** uint256(_decimals));
+        totalSupply = supplyWithDecimals;
+        _balances[msg.sender] = supplyWithDecimals;
+        emit Transfer(address(0), msg.sender, supplyWithDecimals);
+    }
+
+    function balanceOf(address account) public view returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address to, uint256 value) public returns (bool) {
+        require(to != address(0), "zero address");
+        _balances[msg.sender] = _balances[msg.sender].sub(value);
+        _balances[to] = _balances[to].add(value);
+        emit Transfer(msg.sender, to, value);
+        return true;
+    }
+
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 value) public returns (bool) {
+        require(spender != address(0), "zero address");
+        _allowances[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 value) public returns (bool) {
+        require(to != address(0), "zero address");
+        _allowances[from][msg.sender] = _allowances[from][msg.sender].sub(value);
+        _balances[from] = _balances[from].sub(value);
+        _balances[to] = _balances[to].add(value);
+        emit Transfer(from, to, value);
+        return true;
+    }
+
+    // Optional: increase/decrease allowance helpers (safer UX)
+    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+        _allowances[msg.sender][spender] = _allowances[msg.sender][spender].add(addedValue);
+        emit Approval(msg.sender, spender, _allowances[msg.sender][spender]);
+        return true;
+    }
+
+    function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+        _allowances[msg.sender][spender] = _allowances[msg.sender][spender].sub(subtractedValue);
+        emit Approval(msg.sender, spender, _allowances[msg.sender][spender]);
+        return true;
+    }
+}
+`;
+let tronWeb;
+
+function log(x) { document.getElementById('log').textContent += "\n" + x; }
+
+async function connect() {
+  if (!window.tronLink) {
+    alert("TronLink is required. Open this HTML in a browser with the TronLink extension installed.");
+    return;
+  }
+  try {
+    const res = await window.tronLink.request({method:'tron_requestAccounts'});
+    if (res.code !== 200) throw new Error("Wallet connection rejected.");
+    tronWeb = window.tronLink.tronWeb;
+    document.getElementById('wallet').textContent = tronWeb.defaultAddress.base58;
+    document.getElementById('network').textContent = tronWeb.fullNode.host;
+    log("Wallet connected: " + tronWeb.defaultAddress.base58);
+  } catch(e) { log("Connect error: " + e.message); }
+}
+
+function compile() {
+  const input = {
+    language: "Solidity",
+    sources: {"TokenTrc.sol": {content: SOURCE}},
+    settings: {
+      optimizer: {enabled: true, runs: 200},
+      outputSelection: {"*": {"*": ["abi","evm.bytecode.object"]}}
+    }
+  };
+  const output = JSON.parse(solc.compile(JSON.stringify(input)));
+  if (output.errors) {
+    const errors = output.errors.filter(e => e.severity === "error");
+    output.errors.forEach(e => log(e.formattedMessage));
+    if (errors.length) throw new Error("Compilation failed.");
+  }
+  const c = output.contracts["TokenTrc.sol"]["TRC20"];
+  return {abi:c.abi, bytecode:c.evm.bytecode.object};
+}
+
+async function deploy() {
+  try {
+    if (!tronWeb) await connect();
+    if (!tronWeb) throw new Error("Connect TronLink first.");
+
+    const name = document.getElementById('name').value.trim();
+    const symbol = document.getElementById('symbol').value.trim();
+    const decimals = Number(document.getElementById('decimals').value);
+    const supply = document.getElementById('supply').value.trim();
+
+    if (!name || !symbol || !supply) throw new Error("Fill in all required fields.");
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) throw new Error("Decimals must be 0-18.");
+
+    log("Compiling Solidity 0.5.10...");
+    const compiled = compile();
+    log("Compilation successful.");
+
+    // The logo/website constants are compile-time values in the contract.
+    // For a custom URL, edit SOURCE in this HTML before deployment.
+    const params = [name, symbol, decimals, supply];
+
+    log("Requesting deployment transaction from TronLink...");
+    const instance = await tronWeb.contract(compiled.abi, compiled.bytecode)
+      .new({
+        feeLimit: 1000000000,
+        callValue: 0,
+        parameters: params
+      });
+
+    const address = instance.address;
+    log("DEPLOYED CONTRACT: " + address);
+    log("TRONSCAN: https://tronscan.org/#/contract/" + address);
+  } catch(e) {
+    console.error(e);
+    log("ERROR: " + (e && e.message ? e.message : e));
+  }
+}
+</script>
+</body>
+</html>
