@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>MYT TRC-20 Deployer</title>
+
+<!--
+  این فایل یک DApp تک‌فایلی است.
+  برای کامپایل قرارداد در مرورگر از solc-js و برای اتصال به TRON از TronWeb استفاده می‌کند.
+  کلید خصوصی داخل فایل ذخیره نمی‌شود؛ تراکنش باید توسط کیف پول امضا شود.
+-->
+<script src="https://cdn.jsdelivr.net/npm/tronweb@6.1.0/dist/TronWeb.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/solc@0.8.20/solc.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;color:#f4f7fb;font-family:Arial,sans-serif}
+.wrap{max-width:560px;margin:auto;padding:16px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:18px;padding:18px;margin-top:12px}
+h1{font-size:25px;margin:0 0 6px;text-align:center}
+.sub{text-align:center;color:#9da7b3;margin-bottom:20px}
+label{display:block;margin:14px 0 6px;color:#c9d1d9}
+input,select{width:100%;padding:13px;border-radius:10px;border:1px solid #30363d;background:#0d1117;color:#fff;font-size:16px}
+button{width:100%;padding:14px;border:0;border-radius:11px;margin-top:12px;font-size:16px;font-weight:700;background:#238636;color:#fff}
+button.secondary{background:#1f6feb}
+button:disabled{opacity:.5}
+.info,.status{margin-top:14px;padding:13px;border-radius:11px;background:#0d1117;border:1px solid #30363d;white-space:pre-wrap;word-break:break-word;line-height:1.8}
+.small{font-size:12px;color:#9da7b3;line-height:1.7;margin-top:12px}
+.ok{color:#7ee787}.warn{color:#f2cc60}.err{color:#ff7b72}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>MYT TRC-20</h1>
+    <div class="sub">ساخت و Deploy توکن روی Shasta یا Mainnet</div>
+
+    <label>شبکه موردنظر</label>
+    <select id="network">
+      <option value="shasta">Shasta Testnet</option>
+      <option value="mainnet">TRON Mainnet</option>
+    </select>
+
+    <label>نام توکن</label>
+    <input id="name" value="My Token">
+
+    <label>نماد</label>
+    <input id="symbol" value="MYT">
+
+    <label>عرضه کل</label>
+    <input id="supply" type="number" min="1" step="1" value="1000000">
+
+    <label>Decimals</label>
+    <input value="6" readonly>
+
+    <button class="secondary" id="connect">اتصال کیف پول</button>
+    <button id="deploy" disabled>Deploy قرارداد</button>
+
+    <div id="status" class="status">ابتدا کیف پول را متصل کنید.</div>
+
+    <div class="small">
+      عرضه ثابت است و پس از Deploy تابع mint وجود ندارد.
+      کلید خصوصی/Seed Phrase را هرگز در این صفحه وارد نکنید.
+      برای Mainnet باید کیف پول شما TRX کافی برای هزینه تراکنش داشته باشد.
+    </div>
+  </div>
+</div>
+
+<script>
+const SOURCE = `
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract MyToken {
+    string private _name;
+    string private _symbol;
+    uint8 private constant _decimals = 6;
+    uint256 private _totalSupply;
+
+    mapping(address => uint256) private _balances;
+    mapping(address => mapping(address => uint256)) private _allowances;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    constructor(string memory tokenName, string memory tokenSymbol, uint256 initialSupply) {
+        _name = tokenName;
+        _symbol = tokenSymbol;
+        _totalSupply = initialSupply * 10 ** uint256(_decimals);
+        _balances[msg.sender] = _totalSupply;
+        emit Transfer(address(0), msg.sender, _totalSupply);
+    }
+
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public pure returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) public view returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    function approve(address spender, uint256 amount) public returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public returns (bool) {
+        uint256 allowed = _allowances[from][msg.sender];
+        require(allowed >= amount, "TRC20: insufficient allowance");
+
+        unchecked {
+            _allowances[from][msg.sender] = allowed - amount;
+        }
+
+        emit Approval(from, msg.sender, _allowances[from][msg.sender]);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal {
+        require(from != address(0), "TRC20: zero sender");
+        require(to != address(0), "TRC20: zero receiver");
+        require(_balances[from] >= amount, "TRC20: insufficient balance");
+
+        unchecked {
+            _balances[from] -= amount;
+            _balances[to] += amount;
+        }
+
+        emit Transfer(from, to, amount);
+    }
+}
+`;
+
+let tronWeb = null;
+let account = null;
+let compiled = null;
+
+const $ = id => document.getElementById(id);
+
+function status(text, cls="") {
+  $("status").className = "status " + cls;
+  $("status").textContent = text;
+}
+
+function getInjectedTronWeb() {
+  if (window.tronWeb && window.tronWeb.ready) return window.tronWeb;
+  if (window.tronWeb) return window.tronWeb;
+  return null;
+}
+
+async function connectWallet() {
+  try {
+    // TronLink mobile
+    if (window.tronLink && window.tronLink.request) {
+      try { await window.tronLink.request({method:"tron_requestAccounts"}); } catch(e) {}
+    }
+
+    tronWeb = getInjectedTronWeb();
+
+    if (!tronWeb) {
+      status("TronLink/کیف پول سازگار پیدا نشد. این فایل را داخل مرورگر DApp کیف پول باز کنید.", "err");
+      return;
+    }
+
+    account = tronWeb.defaultAddress && tronWeb.defaultAddress.base58;
+
+    if (!account) {
+      status("کیف پول Unlock نیست یا حساب انتخاب نشده است.", "warn");
+      return;
+    }
+
+    const selected = $("network").value;
+    const host = String(tronWeb.fullNode?.host || tronWeb.fullNode?.toString?.() || "");
+
+    let networkText = "شبکه کیف پول شناسایی نشد.";
+    if (selected === "shasta") {
+      networkText = /shasta/i.test(host) ? "Shasta تأیید شد." :
+        "هشدار: کیف پول ظاهراً روی Shasta نیست. قبل از Deploy شبکه کیف پول را روی Shasta بگذارید.";
+    } else {
+      networkText = /api\.tron/i.test(host) && !/shasta/i.test(host) ?
+        "Mainnet تأیید شد." :
+        "هشدار: کیف پول ظاهراً روی Mainnet نیست. قبل از Deploy شبکه کیف پول را روی Mainnet بگذارید.";
+    }
+
+    $("deploy").disabled = false;
+    status("کیف پول متصل شد\n" + account + "\n\n" + networkText, /هشدار/.test(networkText) ? "warn" : "ok");
+  } catch (e) {
+    status("خطای اتصال:\n" + (e.message || e), "err");
+  }
+}
+
+function compileContract() {
+  if (typeof solc === "undefined") throw new Error("solc-js بارگذاری نشده است.");
+
+  const input = {
+    language: "Solidity",
+    sources: {"MyToken.sol": {content: SOURCE}},
+    settings: {
+      optimizer: {enabled: true, runs: 200},
+      outputSelection: {"*": {"*": ["abi", "evm.bytecode.object"]}}
+    }
+  };
+
+  const output = JSON.parse(solc.compile(JSON.stringify(input)));
+
+  if (output.errors) {
+    const fatal = output.errors.filter(x => x.severity === "error");
+    if (fatal.length) throw new Error(fatal.map(x => x.formattedMessage).join("\n"));
+  }
+
+  const c = output.contracts?.["MyToken.sol"]?.MyToken;
+  if (!c || !c.evm?.bytecode?.object) throw new Error("Bytecode تولید نشد.");
+
+  return {abi:c.abi, bytecode:c.evm.bytecode.object};
+}
+
+async function deployToken() {
+  $("deploy").disabled = true;
+
+  try {
+    if (!tronWeb || !account) await connectWallet();
+    if (!tronWeb || !account) throw new Error("ابتدا کیف پول را متصل کنید.");
+
+    const selected = $("network").value;
+    const name = $("name").value.trim();
+    const symbol = $("symbol").value.trim();
+    const supply = $("supply").value.trim();
+
+    if (!name || !symbol || !supply || !/^[0-9]+$/.test(supply) || Number(supply) <= 0) {
+      throw new Error("نام، نماد و عرضه معتبر وارد کنید.");
+    }
+    if (name.length > 64 || symbol.length > 16) {
+      throw new Error("نام یا نماد بیش از حد طولانی است.");
+    }
+
+    // جلوگیری از Deploy روی شبکه اشتباه
+    const host = String(tronWeb.fullNode?.host || tronWeb.fullNode?.toString?.() || "");
+    const looksShasta = /shasta/i.test(host);
+    const looksMainnet = /api\.tron/i.test(host) && !looksShasta;
+
+    if (selected === "shasta" && !looksShasta) {
+      throw new Error("کیف پول روی Shasta نیست. ابتدا شبکه کیف پول را روی Shasta قرار دهید.");
+    }
+    if (selected === "mainnet" && !looksMainnet) {
+      throw new Error("کیف پول روی Mainnet نیست. ابتدا شبکه کیف پول را روی TRON Mainnet قرار دهید.");
+    }
+
+    status("در حال کامپایل قرارداد در گوشی...", "warn");
+    compiled = compileContract();
+
+    status("قرارداد کامپایل شد.\nدر حال باز کردن درخواست Deploy در کیف پول...", "warn");
+
+    // مقدار constructor: name, symbol, initialSupply
+    const contract = await tronWeb.contract().new({
+      abi: compiled.abi,
+      bytecode: compiled.bytecode,
+      feeLimit: 1000_000_000,
+      callValue: 0,
+      parameters: [name, symbol, supply]
+    });
+
+    const address = contract.address;
+    status(
+      "Deploy با موفقیت انجام شد!\n\n" +
+      "Network: " + (selected === "shasta" ? "Shasta" : "TRON Mainnet") + "\n" +
+      "Contract Address:\n" + address + "\n\n" +
+      "این آدرس قرارداد توکن MYT است.",
+      "ok"
+    );
+
+    const explorer = selected === "shasta"
+      ? "https://shasta.tronscan.org/#/contract/" + address
+      : "https://tronscan.org/#/contract/" + address;
+
+    const a = document.createElement("a");
+    a.href = explorer;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = "باز کردن قرارداد در TRONSCAN";
+    a.style.display = "block";
+    a.style.marginTop = "12px";
+    a.style.color = "#58a6ff";
+    $("status").appendChild(document.createElement("br"));
+    $("status").appendChild(a);
+
+  } catch (e) {
+    status("Deploy انجام نشد:\n" + (e.message || e), "err");
+  } finally {
+    $("deploy").disabled = false;
+  }
+}
+
+$("connect").addEventListener("click", connectWallet);
+$("deploy").addEventListener("click", deployToken);
+
+$("network").addEventListener("change", () => {
+  if (tronWeb && account) connectWallet();
+});
+</script>
+</body>
+</html>
